@@ -479,6 +479,10 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.config)
+    if len(config["experiments"]) != 1:
+        raise ValueError(
+            "Each config must define exactly one experiment."
+        )
 
     jobs_path = ROOT / config["paths"]["job_manifest"]
     output_path = (

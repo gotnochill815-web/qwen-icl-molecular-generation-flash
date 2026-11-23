@@ -162,7 +162,7 @@ def main():
     )
     parser.add_argument(
         "--config",
-        default="configs/flash_zero_shot.json",
+        default="configs/logp_zero_shot.json",
     )
     parser.add_argument(
         "--input",
@@ -176,7 +176,7 @@ def main():
     )
     parser.add_argument(
         "--output-root",
-        default="outputs/evaluation/flash_zero_shot",
+        default=None,
         help="Separate output directory for Flash evaluation.",
     )
     args = parser.parse_args()
@@ -189,7 +189,9 @@ def main():
     input_path = root_path(
         args.input or config["paths"]["generation_output"]
     )
-    output_root = root_path(args.output_root)
+    output_root = root_path(
+        args.output_root or config["paths"]["evaluation_root"]
+    )
 
     if not input_path.exists():
         raise FileNotFoundError(
@@ -197,6 +199,10 @@ def main():
         )
 
     experiments = config["experiments"]
+    if len(experiments) != 1:
+        raise ValueError(
+            "Each config must define exactly one experiment."
+        )
 
     if args.experiment:
         if args.experiment not in experiments:

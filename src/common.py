@@ -9,7 +9,7 @@ from rdkit.Chem import QED, Crippen, rdMolDescriptors, RDConfig
 RDLogger.DisableLog("rdApp.*")
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = ROOT / "configs/zero_shot.json"
+CONFIG_PATH = ROOT / "configs/logp_zero_shot.json"
 
 # RDKit's Ertl synthetic accessibility implementation.
 import sys

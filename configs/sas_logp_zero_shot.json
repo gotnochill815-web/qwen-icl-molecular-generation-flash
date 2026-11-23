@@ -1,5 +1,5 @@
 {
-  "project": "qwen_flash_molecular_generation",
+  "project": "qwen_flash_sas_logp_zero_shot",
   "seed": 42,
   "dataset": {
     "train": "outputs/processed/guacamol_full/train.csv",
@@ -16,36 +16,12 @@
     "trust_remote_code": true,
     "dtype": "bfloat16",
     "device_map": "auto",
-    "local_files_only": false
+    "local_files_only": false,
+    "auto_model_class": "AutoModelForImageTextToText"
   },
   "experiments": {
-    "logp": [
-      "logp"
-    ],
-    "tpsa": [
-      "tpsa"
-    ],
-    "sas": [
-      "sas"
-    ],
-    "qed": [
-      "qed"
-    ],
-    "tpsa_sas": [
-      "tpsa",
-      "sas"
-    ],
     "sas_logp": [
       "sas",
-      "logp"
-    ],
-    "logp_sas_tpsa": [
-      "logp",
-      "sas",
-      "tpsa"
-    ],
-    "tpsa_logp": [
-      "tpsa",
       "logp"
     ]
   },
@@ -77,21 +53,29 @@
     }
   },
   "paths": {
-    "target_manifest": "manifests/flash_zero_shot_targets.json",
-    "job_manifest": "manifests/flash_zero_shot_jobs.jsonl",
-    "generation_output": "outputs/raw/qwen_flash_zero_shot.jsonl",
-    "smoke_output": "outputs/raw/qwen_flash_smoke_test.jsonl"
+    "target_manifest": "manifests/sas_logp_zero_shot_targets.json",
+    "job_manifest": "manifests/sas_logp_zero_shot_jobs.jsonl",
+    "generation_output": "outputs/raw/qwen_flash_sas_logp_zero_shot.jsonl",
+    "smoke_output": "outputs/raw/qwen_flash_sas_logp_zero_shot_smoke_test.jsonl",
+    "evaluation_root": "outputs/evaluation/flash_sas_logp_zero_shot",
+    "aggregate_output": "outputs/evaluation/flash_sas_logp_zero_shot/aggregate"
   },
   "vllm": {
     "tensor_parallel_size": 1,
     "max_model_len": 4096,
-    "max_num_seqs": 4,
-    "max_num_batched_tokens": 4096,
-    "batch_size": 4,
+    "max_num_seqs": 2,
+    "max_num_batched_tokens": 2048,
+    "batch_size": 2,
     "gpu_memory_utilization": 0.9,
     "cpu_offload_gb": 0,
     "language_model_only": true,
     "enable_prefix_caching": true,
-    "required_total_gpu_memory_gb": 423
+    "model_id": "Inferact/Qwen3.8-Flash-Next-NVFP4",
+    "dtype": "auto",
+    "min_vllm_version": "0.30.0",
+    "default_minimum_gpu_memory_gb": 130,
+    "engram_config": {
+      "cpu_offload": true
+    }
   }
 }

@@ -45,26 +45,37 @@ def main():
     )
     parser.add_argument(
         "--config",
-        default="configs/flash_zero_shot.json",
+        default="configs/logp_zero_shot.json",
     )
     parser.add_argument(
         "--input-root",
-        default="outputs/evaluation/flash_zero_shot",
+        default=None,
     )
     parser.add_argument(
         "--output-dir",
-        default="outputs/evaluation/flash_zero_shot/all_experiments",
+        default=None,
     )
     args = parser.parse_args()
 
     config_path = resolve_path(args.config)
-    input_root = resolve_path(args.input_root)
-    output_dir = resolve_path(args.output_dir)
 
     with open(config_path) as f:
         config = json.load(f)
 
     experiments = config["experiments"]
+
+    if len(experiments) != 1:
+        raise ValueError(
+            "Each config must define exactly one experiment."
+        )
+
+    input_root = resolve_path(
+        args.input_root or config["paths"]["evaluation_root"]
+    )
+
+    output_dir = resolve_path(
+        args.output_dir or config["paths"]["aggregate_output"]
+    )
 
     manifest_path = resolve_path(config["paths"]["job_manifest"])
     jobs = read_jsonl(manifest_path)

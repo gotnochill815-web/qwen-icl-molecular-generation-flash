@@ -78,6 +78,11 @@ def main():
     config = load_config(args.config)
 
     experiments = config["experiments"]
+    if len(experiments) != 1:
+        raise ValueError(
+            "Each config must define exactly one experiment."
+        )
+
     target_count = config["targets"]["targets_per_experiment"]
 
     validation_path = ROOT / config["dataset"]["validation"]
