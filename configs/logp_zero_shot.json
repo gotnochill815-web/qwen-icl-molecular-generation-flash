@@ -24,25 +24,39 @@
       "logp"
     ]
   },
-  "targets": {
-    "targets_per_experiment": 4,
-    "single_property_quantiles": [
-      0.2,
-      0.4,
-      0.6,
-      0.8
+  
+"targets": {
+  "targets_per_experiment": 3,
+  "single_property_quantiles": [
+    0.2,
+    0.4,
+    0.6,
+    0.8
+  ],
+  "fixed_targets": {
+    "logp": [
+      2.0,
+      4.0,
+      6.0
     ]
-  },
-  "generation": {
-    "shots": 0,
-    "replicates_per_target": 1,
-    "generations_per_replicate": 25,
-    "temperature": 0.7,
-    "top_p": 0.95,
-    "max_new_tokens": 128,
-    "do_sample": true,
-    "repetition_penalty": 1.0
-  },
+  }
+},
+"generation": {
+  "shots": 0,
+  "replicates_per_target": 1,
+  "generations_per_replicate": 25,
+  "temperature": 0.7,
+  "top_p": 0.95,
+  "max_new_tokens": 128,
+  "do_sample": true,
+  "repetition_penalty": 1.0,
+  "generations_per_replicate_by_target": [
+    34,
+    33,
+    33
+  ]
+},
+
   "evaluation": {
     "tolerances": {
       "logp": 0.5,
