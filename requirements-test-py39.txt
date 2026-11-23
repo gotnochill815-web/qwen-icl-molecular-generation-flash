@@ -1,0 +1,12 @@
+# Tested with Python 3.9.25
+# PyTorch is installed separately to preserve the appropriate CUDA build.
+
+transformers==4.57.6
+accelerate==1.10.1
+huggingface-hub==0.36.2
+tokenizers==0.22.2
+safetensors==0.7.0
+
+rdkit==2025.9.2
+numpy==1.26.4
+pandas==2.3.3

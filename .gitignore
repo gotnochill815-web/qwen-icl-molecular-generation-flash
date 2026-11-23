@@ -1,0 +1,48 @@
+# Model weights
+models/
+checkpoints/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+
+# Data and generated results
+data/
+datasets/
+outputs/
+manifests/
+logs/
+
+# Temporary files
+backups/
+__pycache__/
+*.py[cod]
+*.bak
+*.tmp
+.pytest_cache/
+
+# Credentials
+.env
+.env.*
+!.env.example
+
+# Experiment tracking
+wandb/
+mlruns/
+.cache/
+
+# Python environments
+.venv/
+venv/
+ENV/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Editor and operating system files
+.vscode/
+.idea/
+.DS_Store
