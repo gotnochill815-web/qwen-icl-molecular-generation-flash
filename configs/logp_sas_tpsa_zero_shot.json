@@ -27,13 +27,57 @@
     ]
   },
   "targets": {
-    "targets_per_experiment": 4,
+    "targets_per_experiment": 8,
     "single_property_quantiles": [
       0.2,
       0.4,
       0.6,
       0.8
-    ]
+    ],
+    "fixed_targets": {
+      "logp_sas_tpsa": [
+        {
+          "logp": 2.0,
+          "sas": 2.0,
+          "tpsa": 40.0
+        },
+        {
+          "logp": 2.0,
+          "sas": 4.0,
+          "tpsa": 40.0
+        },
+        {
+          "logp": 6.0,
+          "sas": 4.0,
+          "tpsa": 40.0
+        },
+        {
+          "logp": 6.0,
+          "sas": 2.0,
+          "tpsa": 40.0
+        },
+        {
+          "logp": 6.0,
+          "sas": 4.0,
+          "tpsa": 80.0
+        },
+        {
+          "logp": 2.0,
+          "sas": 4.0,
+          "tpsa": 80.0
+        },
+        {
+          "logp": 2.0,
+          "sas": 2.0,
+          "tpsa": 80.0
+        },
+        {
+          "logp": 6.0,
+          "sas": 2.0,
+          "tpsa": 80.0
+        }
+      ]
+    }
   },
   "generation": {
     "shots": 0,
@@ -43,7 +87,17 @@
     "top_p": 0.95,
     "max_new_tokens": 128,
     "do_sample": true,
-    "repetition_penalty": 1.0
+    "repetition_penalty": 1.0,
+    "generations_per_replicate_by_target": [
+      13,
+      13,
+      13,
+      13,
+      12,
+      12,
+      12,
+      12
+    ]
   },
   "evaluation": {
     "tolerances": {
@@ -79,5 +133,6 @@
       "cpu_offload": true
     },
     "minimum_available_host_memory_gb": 51.0
-  }
+  },
+  "target_seed_offset": 6
 }

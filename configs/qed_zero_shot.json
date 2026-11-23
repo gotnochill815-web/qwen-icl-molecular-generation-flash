@@ -25,13 +25,20 @@
     ]
   },
   "targets": {
-    "targets_per_experiment": 4,
+    "targets_per_experiment": 3,
     "single_property_quantiles": [
       0.2,
       0.4,
       0.6,
       0.8
-    ]
+    ],
+    "fixed_targets": {
+      "qed": [
+        0.3,
+        0.5,
+        0.7
+      ]
+    }
   },
   "generation": {
     "shots": 0,
@@ -41,7 +48,12 @@
     "top_p": 0.95,
     "max_new_tokens": 128,
     "do_sample": true,
-    "repetition_penalty": 1.0
+    "repetition_penalty": 1.0,
+    "generations_per_replicate_by_target": [
+      34,
+      33,
+      33
+    ]
   },
   "evaluation": {
     "tolerances": {
@@ -77,5 +89,6 @@
       "cpu_offload": true
     },
     "minimum_available_host_memory_gb": 51.0
-  }
+  },
+  "target_seed_offset": 3
 }

@@ -89,41 +89,72 @@ def calculate_properties(smiles):
 
 def extract_smiles(raw_output):
     """
-    Extract the first RDKit-valid SMILES from model output.
-    The model is still instructed to return only one SMILES.
+    Parse one complete SMILES candidate.
+
+    Accepts a plain SMILES, an optional SMILES: label, or a Markdown
+    code fence. Never extracts individual tokens from explanatory prose.
     """
-    if not raw_output:
+    if raw_output is None:
         return "", ""
 
     text = str(raw_output).strip()
-    text = text.replace("```smiles", "").replace("```SMILES", "")
-    text = text.replace("```", "")
 
+    if not text:
+        return "", ""
+
+    # Allow a standalone SMILES label before the actual candidate.
+    lines = text.splitlines()
+
+    if lines and re.fullmatch(
+        r"\s*(?:smiles|molecule|output)\s*[:=]?\s*",
+        lines[0],
+        flags=re.IGNORECASE
+    ):
+        text = "\n".join(lines[1:]).strip()
+
+    if not text:
+        return "", ""
+
+    # Allow one surrounding Markdown code fence.
+    if text.startswith("```") and text.endswith("```"):
+        lines = text.splitlines()
+
+        if len(lines) >= 3:
+            text = "\n".join(lines[1:-1]).strip()
+        else:
+            return "", ""
+
+    # Only one non-empty candidate is allowed.
     lines = [line.strip() for line in text.splitlines() if line.strip()]
 
-    for line in lines:
-        line = re.sub(
-            r"^(smiles|molecule|output)\s*[:=]\s*",
-            "",
-            line,
-            flags=re.IGNORECASE
-        )
-        line = line.strip().strip("`'\"")
+    if len(lines) != 1:
+        return "", ""
 
-        candidates = [line]
+    candidate = re.sub(
+        r"^(?:smiles|molecule|output)\s*[:=]\s*",
+        "",
+        lines[0],
+        flags=re.IGNORECASE
+    ).strip()
 
-        # Handles responses such as: "CCO (ethanol)"
-        candidates.extend(line.split())
+    # Remove matching surrounding quotes or backticks.
+    if (
+        len(candidate) >= 2
+        and candidate[0] == candidate[-1]
+        and candidate[0] in {"'", '"', "`"}
+    ):
+        candidate = candidate[1:-1].strip()
 
-        for candidate in candidates:
-            candidate = candidate.strip().strip("`'\";,")
-            canonical, _ = calculate_properties(candidate)
+    # A SMILES candidate should not contain explanatory whitespace.
+    if not candidate or any(char.isspace() for char in candidate):
+        return "", ""
 
-            if canonical:
-                return candidate, canonical
+    canonical, _ = calculate_properties(candidate)
 
-    return "", ""
+    if not canonical:
+        return "", ""
 
+    return candidate, canonical
 
 def build_prompt(properties, targets):
     """
@@ -134,10 +165,8 @@ def build_prompt(properties, targets):
     for prop in properties:
         info = PROPERTY_INFO[prop]
         value = float(targets[prop])
-        precision = info["precision"]
-
         condition_lines.append(
-            f"- {info['name']}: {value:.{precision}f} "
+            f"- {info['name']}: {value!r} "
             f"({info['description']})"
         )
 
