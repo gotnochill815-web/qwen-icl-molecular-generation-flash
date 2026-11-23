@@ -1,331 +1,287 @@
-# Zero-Shot Molecular Generation with Qwen3.8-Flash-Next
+# Qwen3.8-Flash-Next: Zero-Shot Molecular Generation
 
-A configurable pipeline for zero-shot molecular generation conditioned on
-molecular properties using the Hugging Face checkpoint
-`Qwen/Qwen3.8-Flash-Next`.
+This repository implements a zero-shot molecular generation pipeline using **Qwen3.8-Flash-Next**. The model is prompted to generate SMILES strings satisfying specified molecular property targets. Generated molecules are evaluated using RDKit and the resulting metrics are aggregated across independent experiments.
 
-The repository supports a Transformers generation backend and an optional
-vLLM backend, with RDKit-based molecular validation and evaluation.
+The experiments cover four molecular properties and selected combinations:
 
-**Scope:** Zero-shot molecular generation only (`shots = 0`).
+- LogP
+- TPSA
+- SAS
+- QED
+- TPSA + SAS
+- SAS + LogP
+- LogP + SAS + TPSA
+- TPSA + LogP
 
-## Experiments
+Each experiment has its own configuration, manifest, generation output, smoke-test output, and evaluation results.
 
-Eight experiments are configured:
-
-| Experiment | Conditioning properties | Jobs |
-|---|---|---:|
-| logp | LogP | 100 |
-| tpsa | TPSA | 100 |
-| sas | SAS | 100 |
-| qed | QED | 100 |
-| tpsa_sas | TPSA + SAS | 100 |
-| sas_logp | SAS + LogP | 100 |
-| logp_sas_tpsa | LogP + SAS + TPSA | 100 |
-| tpsa_logp | TPSA + LogP | 100 |
-| **Total** | | **800** |
-
-Each experiment uses four targets, one replicate per target, and 25
-generations per target.
-
-The generation configuration uses:
-- Temperature: 0.7
-- Top-p: 0.95
-- Maximum new tokens: 128
-- Repetition penalty: 1.0
-- Sampling enabled
-- Random seed: 42
-
-## Repository structure
+## 1. Repository Structure
 
 ```text
-.
+qwen-icl-molecular-generation-flash/
+│
 ├── configs/
-│   └── flash_zero_shot.json
+│   ├── logp_zero_shot.json
+│   ├── tpsa_zero_shot.json
+│   ├── sas_zero_shot.json
+│   ├── qed_zero_shot.json
+│   ├── tpsa_sas_zero_shot.json
+│   ├── sas_logp_zero_shot.json
+│   ├── logp_sas_tpsa_zero_shot.json
+│   └── tpsa_logp_zero_shot.json
+│
 ├── src/
 │   ├── common.py
-│   ├── build_manifest.py
 │   ├── prepare_dataset.py
-│   ├── smoke_test.py
+│   ├── build_manifest.py
 │   ├── generate_flash.py
 │   ├── generate_flash_vllm.py
+│   ├── smoke_test.py
 │   ├── evaluate_flash.py
 │   ├── evaluate_chemfm_property.py
 │   ├── evaluate_chemfm_multi.py
 │   └── aggregate_flash_results.py
+│
 ├── requirements.txt
-├── README.md
-└── .gitignore
+├── requirements-vllm.txt
+├── requirements-test-py39.txt
+├── .gitignore
+└── README.md
 ```
 
-Generated datasets, manifests, model weights, logs, and experiment outputs
-are intentionally excluded from Git.
+## 2. Experimental Design
 
-## Environment
+All experiments use **zero-shot generation**, with no molecular examples supplied in the generation prompt.
 
-Model-free validation environment:
+| Setting | Value |
+|---|---:|
+| Model | Qwen3.8-Flash-Next |
+| Number of experiments | 8 |
+| Shots | 0 |
+| Targets per experiment | 4 |
+| Generations per target | 25 |
+| Total generations per experiment | 100 |
+| Total planned generations | 800 |
+| Temperature | 0.7 |
+| Random seed | 42 |
 
-| Component | Version |
-|---|---|
-| Python | 3.9.25 |
-| PyTorch | 2.8.0+cu128 |
-| CUDA build | 12.8 |
-| Transformers | 4.57.6 |
-| Accelerate | 1.10.1 |
-| Hugging Face Hub | 0.36.2 |
-| Tokenizers | 0.22.2 |
-| Safetensors | 0.7.0 |
-| RDKit | 2025.9.2 |
-| NumPy | 1.26.4 |
-| Pandas | 2.3.3 |
+Each configuration defines one independent experiment. This keeps manifests, raw outputs, and evaluation results separate and makes it easier to compare property conditions.
 
-The table above records the model-free validation environment. Flash-Next uses Python 3.11 and Transformers 5.17.0. The model-class imports and architecture mapping were checked, but checkpoint loading and GPU generation have not yet been validated. Actual GPU availability depends on the cluster allocation. The older dependency snapshot is retained in `requirements-test-py39.txt`.
+### Property evaluation
 
-## Installation
+Molecular properties are computed from generated SMILES using RDKit:
 
-Create and activate a Python environment:
+- **LogP:** Wildman-Crippen molecular LogP.
+- **TPSA:** Topological polar surface area.
+- **SAS:** Synthetic accessibility score.
+- **QED:** Quantitative estimate of drug-likeness.
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
+For multi-property experiments, generated molecules are evaluated against all requested properties.
 
-python -m pip install --upgrade pip
-```
+## 3. Requirements
 
-Install a PyTorch build compatible with your CUDA environment. The tested
-environment used PyTorch 2.8.0 with CUDA 12.8 support.
+The main environment uses Python 3.11 or later.
 
-Install the remaining dependencies:
+Install the project dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Check the environment:
+PyTorch should be installed separately with a CUDA-compatible build matching the available GPU environment.
+
+For vLLM-based generation:
 
 ```bash
-python -m pip check
+pip install -r requirements-vllm.txt
 ```
 
-The vLLM backend is optional. Its runtime dependencies and compatibility
-must be installed and validated separately. Do not install vLLM into an
-existing cluster environment without checking its PyTorch, CUDA, Python,
-and model-architecture compatibility.
+The vLLM configuration requires **vLLM 0.30.0 or later**.
 
-## Dataset preparation
+The file `requirements-test-py39.txt` records the separate older Python 3.9 testing environment.
 
-The dataset preparation script expects an existing GuacaMol dataset
-directory containing:
+## 4. Dataset
+
+The manifest builder uses a molecular dataset containing SMILES strings and computed molecular properties.
+
+The input CSV should contain these columns:
 
 ```text
-guacamol_full/
-├── train.csv
-└── val.csv
+smiles
+logp
+tpsa
+sas
+qed
 ```
 
-The input CSV files must contain:
-- `smiles`
-- `qed`, `logp`, `sas`, `tpsa`
-- `mean_qed`, `mean_logp`, `mean_sas`, `mean_tpsa`
-- `std_qed`, `std_logp`, `std_sas`, `std_tpsa`
+Update the dataset path in each experiment configuration before running the pipeline.
 
-The property columns are expected to contain normalized values. The
-preparation script converts them back to their original scales using the
-provided means and standard deviations.
+The dataset is used to construct target property conditions. For single-property experiments, target values are selected using quantiles. For multi-property experiments, combinations of property values are sampled using the configured random seed.
 
-Run:
+## 5. Configuration
 
-```bash
-python src/prepare_dataset.py \
-  --data-dir /path/to/guacamol_full
-```
+Each experiment is configured independently under `configs/`.
 
-Processed files are written to:
+For example:
 
 ```text
-outputs/processed/guacamol_full/
-├── train.csv
-├── val.csv
-└── metadata.json
+configs/logp_zero_shot.json
 ```
 
-If the processed dataset is already available, this step can be skipped.
+The configuration specifies:
 
-## Build zero-shot manifests
+- Experiment name and requested properties.
+- Dataset and validation data paths.
+- Number of targets and generations.
+- Sampling parameters.
+- Model identifiers.
+- Manifest and job-list paths.
+- Raw generation output paths.
+- Smoke-test output paths.
+- Evaluation and aggregation directories.
+- vLLM runtime settings.
 
-Generate target and job manifests:
+The eight configuration files are intended to be run independently. Avoid pointing multiple experiments to the same output or manifest paths.
+
+## 6. Build Experiment Manifests
+
+Build the target conditions and generation jobs for all experiments:
 
 ```bash
-python src/build_manifest.py \
-  --config configs/flash_zero_shot.json
+for config in configs/*.json; do
+    python src/build_manifest.py --config "$config"
+done
 ```
 
-This creates:
+Each experiment produces four target conditions and 100 generation jobs.
+
+To build only one experiment:
+
+```bash
+python src/build_manifest.py --config configs/logp_zero_shot.json
+```
+
+## 7. Run Molecular Generation
+
+The repository provides two generation backends:
+
+- `generate_flash.py`: Transformers-based generation.
+- `generate_flash_vllm.py`: vLLM-based generation.
+
+For vLLM generation, run:
+
+```bash
+python src/generate_flash_vllm.py --config configs/logp_zero_shot.json
+```
+
+To run all eight experiments sequentially:
+
+```bash
+for config in configs/*.json; do
+    python src/generate_flash_vllm.py --config "$config"
+done
+```
+
+The generation script uses the experiment manifest and records generated outputs with their corresponding job IDs and molecular properties.
+
+Generation can be resumed: jobs already present in the output are skipped.
+
+The vLLM runner performs preflight checks before model initialization. These include:
+
+- vLLM version.
+- CUDA availability.
+- Number of visible GPUs relative to tensor parallelism.
+- Available GPU memory across the selected tensor-parallel GPUs.
+- Available host memory when PLE CPU offloading is enabled.
+- Validity of engine and batch configuration values.
+
+The default vLLM checkpoint is:
 
 ```text
-manifests/
-├── flash_zero_shot_targets.json
-└── flash_zero_shot_jobs.jsonl
+Inferact/Qwen3.8-Flash-Next-NVFP4
 ```
 
-The configured experiment plan contains 800 unique generation jobs.
+The configuration also specifies the model's PLE offloading settings.
 
-## Model generation
+**Hardware note:** The default NVFP4 configuration specifies a minimum GPU memory requirement of 130 GiB and at least 51 GiB of available host memory for PLE CPU offloading. Additional runtime headroom is necessary. Check the requirements against the actual GPU and host environment before launching inference. An 80 GB A100 does not satisfy the configured 130 GiB GPU-memory requirement.
 
-### Transformers backend
+## 8. Smoke Testing
 
-Request a suitable GPU allocation before running inference.
-
-Start with a single-job test:
+Before running actual model inference, run the smoke test for each experiment:
 
 ```bash
-python src/generate_flash.py \
-  --config configs/flash_zero_shot.json \
-  --limit 1
+for config in configs/*.json; do
+    python src/smoke_test.py --config "$config"
+done
 ```
 
-Run the complete experiment:
+The smoke test uses predefined molecular examples rather than loading the language model. It checks that the experiment pipeline can:
+
+1. Read the experiment configuration and manifest.
+2. Create generation records.
+3. Parse and validate SMILES using RDKit.
+4. Store output in the experiment-specific smoke-test location.
+
+Smoke-test records can then be passed to `evaluate_flash.py` using the corresponding configured smoke-output path. Set `--output-root` to the experiment's configured evaluation directory so that the aggregation script can find the resulting summary.
+
+## 9. Evaluate Generated Molecules
+
+Evaluate the actual generation outputs:
 
 ```bash
-python src/generate_flash.py \
-  --config configs/flash_zero_shot.json
+for config in configs/*.json; do
+    python src/evaluate_flash.py --config "$config"
+done
 ```
 
-The generator saves records to:
+Evaluation checks generated records against the corresponding manifest and computes molecular validity and property-based evaluation metrics.
 
-```text
-outputs/raw/qwen_flash_zero_shot.jsonl
-```
+The evaluation code uses separate evaluators for single-property and supported multi-property experiments.
 
-It tracks completed job IDs and skips jobs already present in the output,
-allowing interrupted runs to be resumed.
+Evaluation results are written to experiment-specific directories.
 
-### Optional vLLM backend
+## 10. Aggregate Results
 
-After installing and validating a compatible vLLM environment:
+Aggregate the evaluation summaries for each experiment:
 
 ```bash
-python src/generate_flash_vllm.py \
-  --config configs/flash_zero_shot.json \
-  --limit 1
+for config in configs/*.json; do
+    python src/aggregate_flash_results.py --config "$config"
+done
 ```
 
-The vLLM runtime has not yet been validated for this checkpoint in the
-tested environment.
+The aggregation script checks the number of completed generations against the expected number of jobs.
 
-## Evaluation
+An experiment is marked as **partial** when fewer than the expected number of generations have been evaluated. This is expected during smoke testing, where only a small subset of jobs is processed.
 
-Evaluate generated records:
+## 11. Validation Status
 
-```bash
-python src/evaluate_flash.py \
-  --input outputs/raw/qwen_flash_zero_shot.jsonl \
-  --output-root outputs/evaluation/flash_zero_shot
-```
+The repository's eight experiment pipelines have been smoke-tested.
 
-Alternatively, evaluate one experiment:
+| Validation | Result |
+|---|---|
+| Experiment configurations | 8 checked |
+| Manifest generation | Passed for all 8 |
+| Smoke-test pipelines | Passed for all 8 |
+| Stub molecules evaluated | 16 |
+| RDKit SMILES validation | 16/16 valid |
+| Evaluation and aggregation | Passed for all 8 |
+| Python compilation | Passed |
 
-```bash
-python src/evaluate_flash.py \
-  --input outputs/raw/qwen_flash_zero_shot.jsonl \
-  --experiment logp \
-  --output-root outputs/evaluation/flash_zero_shot
-```
+These tests validate the experiment orchestration, record format, SMILES handling, evaluation, and aggregation logic.
 
-The evaluator:
-- Validates generated SMILES using RDKit.
-- Calculates the requested molecular descriptors.
-- Calculates validity, uniqueness, and novelty.
-- Calculates absolute property errors.
-- Reports overall and per-target metrics.
-- Validates generation records against the Flash job manifest.
+**Important:** Smoke tests use predefined molecules. They do not establish that the Qwen model has successfully completed actual inference. Model-generation results must be validated separately.
 
-Each experiment receives its own directory containing:
+## 12. References
 
-```text
-<experiment>/
-├── molecules.csv
-├── summary.csv
-└── summary.json
-```
+- [Qwen3.8-Flash-Next](https://huggingface.co/Inferact/Qwen3.8-Flash-Next-NVFP4)
+- [vLLM](https://github.com/vllm-project/vllm)
+- [RDKit](https://www.rdkit.org/)
+- [GuacaMol](https://github.com/BenevolentAI/guacamol)
 
-## Aggregate results
+---
 
-Aggregate all configured experiments:
-
-```bash
-python src/aggregate_flash_results.py \
-  --input-root outputs/evaluation/flash_zero_shot \
-  --output-dir outputs/evaluation/flash_zero_shot/all_experiments
-```
-
-The aggregator checks the expected number of manifest jobs and labels
-results as complete or partial.
-
-It reads only the Flash evaluation directory, not legacy experiment
-results.
-
-## Model-free smoke testing
-
-The repository provides a smoke test that uses predefined valid SMILES
-instead of loading model weights.
-
-Generate stub records:
-
-```bash
-python src/smoke_test.py \
-  --config configs/flash_zero_shot.json
-```
-
-Evaluate them:
-
-```bash
-python src/evaluate_flash.py \
-  --input outputs/raw/qwen_flash_smoke_test.jsonl \
-  --output-root outputs/evaluation/flash_smoke_test
-```
-
-Aggregate them:
-
-```bash
-python src/aggregate_flash_results.py \
-  --input-root outputs/evaluation/flash_smoke_test \
-  --output-dir outputs/evaluation/flash_smoke_test/all_experiments
-```
-
-These tests validate manifest selection, record creation, RDKit evaluation,
-and aggregation. Stub molecules are not model-generation results and must
-not be reported as Qwen performance.
-
-## Validation status
-
-Validated:
-- Python compilation of the source directory.
-- Configuration and manifest generation.
-- 800 unique zero-shot manifest jobs.
-- RDKit property calculation.
-- Transformers and vLLM command-line interfaces.
-- Model-free smoke testing across all eight experiments.
-- Evaluation of all eight experiments.
-- Aggregation of all eight experiments.
-- Separation from legacy Qwen 27B result directories.
-
-Not yet validated:
-- Loading the actual Qwen3.8-Flash-Next checkpoint.
-- GPU inference with the Transformers backend.
-- GPU inference with the vLLM backend.
-- Full 800-job generation.
-
-## Reproducibility
-
-The experiment configuration is stored in:
-
-```text
-configs/flash_zero_shot.json
-```
-
-Modify that file to change targets, generation parameters, output paths,
-or model settings.
-
-Generated outputs and manifests are not committed to the repository.
-Regenerate manifests using `src/build_manifest.py` before generation.
+**Project:** Zero-Shot In-Context Molecular Generation  
+**Model:** Qwen3.8-Flash-Next  
+**Generation framework:** Transformers / vLLM  
+**Molecular evaluation:** RDKit
