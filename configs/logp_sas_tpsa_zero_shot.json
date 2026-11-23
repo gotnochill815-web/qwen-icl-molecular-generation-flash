@@ -77,6 +77,7 @@
     "default_minimum_gpu_memory_gb": 130,
     "engram_config": {
       "cpu_offload": true
-    }
+    },
+    "minimum_available_host_memory_gb": 51.0
   }
 }

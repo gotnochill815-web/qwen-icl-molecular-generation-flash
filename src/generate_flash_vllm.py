@@ -38,6 +38,79 @@ def minimum_gpu_memory(model_id, engine_config):
     )
 
 
+
+def _read_int_file(path):
+    try:
+        return int(Path(path).read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def available_host_memory_gb():
+    """
+    Estimate available host RAM, respecting cgroup limits when discoverable.
+    Returns None if the system does not expose usable memory information.
+    """
+    candidates = []
+
+    # System-wide available memory.
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                available_kb = int(line.split()[1])
+                candidates.append(available_kb * 1024)
+                break
+    except (OSError, ValueError, IndexError):
+        pass
+
+    # Cgroup v2 and v1 memory limits, where available.
+    try:
+        cgroup_lines = Path("/proc/self/cgroup").read_text().splitlines()
+    except OSError:
+        cgroup_lines = []
+
+    for line in cgroup_lines:
+        parts = line.split(":", 2)
+        if len(parts) != 3:
+            continue
+
+        hierarchy, controllers, relative_path = parts
+        relative_path = relative_path.lstrip("/")
+
+        if hierarchy == "0" and not controllers:
+            base = Path("/sys/fs/cgroup") / relative_path
+            limit = _read_int_file(base / "memory.max")
+            usage = _read_int_file(base / "memory.current")
+
+        elif "memory" in controllers.split(","):
+            bases = [
+                Path("/sys/fs/cgroup/memory") / relative_path,
+                Path("/sys/fs/cgroup") / relative_path,
+            ]
+
+            limit = usage = None
+            for base in bases:
+                limit = _read_int_file(base / "memory.limit_in_bytes")
+                usage = _read_int_file(base / "memory.usage_in_bytes")
+                if limit is not None and usage is not None:
+                    break
+        else:
+            continue
+
+        # Very large cgroup limits represent "unlimited".
+        if (
+            limit is not None
+            and usage is not None
+            and 0 < limit < (1 << 60)
+        ):
+            candidates.append(max(0, limit - usage))
+
+    if not candidates:
+        return None
+
+    return min(candidates) / (1024 ** 3)
+
+
 def preflight(engine_config, torch, vllm_version, model_id):
     from packaging.version import Version
 
@@ -57,7 +130,6 @@ def preflight(engine_config, torch, vllm_version, model_id):
         )
 
     gpu_count = torch.cuda.device_count()
-
     tensor_parallel_size = int(
         engine_config.get("tensor_parallel_size", 1)
     )
@@ -71,46 +143,95 @@ def preflight(engine_config, torch, vllm_version, model_id):
             f"but only {gpu_count} GPUs are visible."
         )
 
-    gpu_memory = []
-    gpu_names = []
+    # vLLM tensor parallelism uses the selected TP ranks.
+    # Do not count unrelated visible GPUs toward model memory.
+    selected_memory = []
+    selected_names = []
 
-    for index in range(gpu_count):
+    print("Visible GPUs:", gpu_count)
+    print("Tensor-parallel GPUs selected:", tensor_parallel_size)
+
+    for index in range(tensor_parallel_size):
         props = torch.cuda.get_device_properties(index)
-
         memory_gb = props.total_memory / (1024 ** 3)
 
-        gpu_memory.append(memory_gb)
-        gpu_names.append(props.name)
+        selected_memory.append(memory_gb)
+        selected_names.append(props.name)
 
         print(
-            f"GPU {index}: {props.name} | "
+            f"TP GPU {index}: {props.name} | "
             f"{memory_gb:.1f} GiB"
         )
 
-    total_memory = sum(gpu_memory)
+    total_selected_memory = sum(selected_memory)
     required_memory = minimum_gpu_memory(
         model_id, engine_config
     )
 
-    print("Visible total GPU memory:", round(total_memory, 1), "GiB")
-    print("Checkpoint memory requirement:", required_memory, "GiB")
+    print(
+        "Selected TP GPU memory:",
+        round(total_selected_memory, 1),
+        "GiB",
+    )
+    print(
+        "Checkpoint memory requirement:",
+        required_memory,
+        "GiB",
+    )
 
-    if any("A100" in name.upper() for name in gpu_names):
+    if any("A100" in name.upper() for name in selected_names):
         print(
             "WARNING: A100 is not listed in the current official "
             "vLLM Qwen3.8 hardware validation matrix."
         )
 
-    if total_memory < required_memory:
+    if total_selected_memory < required_memory:
         raise RuntimeError(
             "\nInsufficient GPU memory. Model initialization was "
             "not attempted.\n"
             f"Checkpoint: {model_id}\n"
-            f"Visible: {total_memory:.1f} GiB\n"
+            f"Selected TP memory: {total_selected_memory:.1f} GiB\n"
             f"Required: {required_memory:.1f} GiB\n"
-            "Request a compatible multi-GPU allocation or select "
-            "a hardware-supported checkpoint configuration."
         )
+
+    engram_config = engine_config.get(
+        "engram_config", {"cpu_offload": True}
+    )
+
+    if engram_config.get("cpu_offload", True):
+        required_host_memory = float(
+            engine_config.get(
+                "minimum_available_host_memory_gb", 51.0
+            )
+        )
+
+        available_host_memory = available_host_memory_gb()
+
+        if available_host_memory is None:
+            print(
+                "WARNING: Could not determine available host memory. "
+                "Check the scheduler memory allocation manually."
+            )
+        else:
+            print(
+                "Available host memory:",
+                round(available_host_memory, 1),
+                "GiB",
+            )
+            print(
+                "Minimum host memory for PLE offload:",
+                required_host_memory,
+                "GiB",
+            )
+
+            if available_host_memory < required_host_memory:
+                raise RuntimeError(
+                    "Insufficient available host memory for PLE CPU "
+                    "offload. Need at least "
+                    f"{required_host_memory:.1f} GiB available; "
+                    f"found {available_host_memory:.1f} GiB. "
+                    "Additional runtime headroom is also required."
+                )
 
 
 def load_engine(config, model_id):
@@ -264,6 +385,45 @@ def make_sampling_params(job, generation_config, SamplingParams):
     )
 
 
+
+def validate_engine_config(engine_config):
+    tensor_parallel_size = int(
+        engine_config.get("tensor_parallel_size", 1)
+    )
+    batch_size = int(engine_config.get("batch_size", 2))
+    max_num_seqs = int(engine_config.get("max_num_seqs", 2))
+    max_model_len = int(engine_config.get("max_model_len", 4096))
+    max_batched_tokens = int(
+        engine_config.get("max_num_batched_tokens", 2048)
+    )
+    gpu_memory_utilization = float(
+        engine_config.get("gpu_memory_utilization", 0.90)
+    )
+
+    if tensor_parallel_size < 1:
+        raise ValueError("tensor_parallel_size must be positive.")
+
+    if batch_size < 1 or max_num_seqs < 1:
+        raise ValueError("batch_size and max_num_seqs must be positive.")
+
+    if batch_size > max_num_seqs:
+        raise ValueError(
+            "batch_size must not exceed vllm.max_num_seqs."
+        )
+
+    if max_model_len < 1 or max_batched_tokens < 1:
+        raise ValueError(
+            "max_model_len and max_num_batched_tokens must be positive."
+        )
+
+    if not 0 < gpu_memory_utilization <= 1:
+        raise ValueError(
+            "gpu_memory_utilization must be in the interval (0, 1]."
+        )
+
+    print("vLLM engine configuration validation: PASS")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Zero-shot Flash-Next generation using vLLM."
@@ -353,21 +513,17 @@ def main():
         or config["model"]["model_id"]
     )
 
+    generation_config = config["generation"]
+
+    # Validate settings before importing/initializing the vLLM engine.
+    validate_engine_config(engine_config)
+
+    batch_size = int(engine_config.get("batch_size", 2))
+
     llm, tokenizer, SamplingParams, version = load_engine(
         config,
         model_id
     )
-
-    generation_config = config["generation"]
-
-    batch_size = int(engine_config.get("batch_size", 2))
-    max_num_seqs = int(engine_config.get("max_num_seqs", 2))
-
-    if batch_size <= 0 or batch_size > max_num_seqs:
-        raise ValueError(
-            "batch_size must be positive and no greater "
-            "than vllm.max_num_seqs."
-        )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
