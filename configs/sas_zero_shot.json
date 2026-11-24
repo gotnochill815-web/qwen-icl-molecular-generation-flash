@@ -81,7 +81,6 @@
     "cpu_offload_gb": 0,
     "language_model_only": true,
     "enable_prefix_caching": true,
-    "model_id": "Inferact/Qwen3.8-Flash-Next-NVFP4",
     "dtype": "auto",
     "min_vllm_version": "0.30.0",
     "default_minimum_gpu_memory_gb": 130,
